@@ -4,28 +4,28 @@ import { HiPhone, HiMail, HiLocationMarker, HiClock, HiShieldCheck } from 'react
 
 const contactInfo = [
   {
+    icon: HiLocationMarker,
+    title: 'Address',
+    detail: 'Office 101, Blue Tower, Security Rd',
+    sub: 'City Center, PK',
+    href: 'https://maps.google.com/?q=Office+101+Blue+Tower+Security+Rd+City+Center',
+    color: 'from-blue-500 to-blue-600',
+  },
+  {
     icon: HiPhone,
-    title: 'Phone',
-    detail: '+1 (818) 707-5382',
+    title: 'Emergency Line (24/7)',
+    detail: '(+92) 555-123-4567',
     sub: 'Available 24/7',
-    href: 'tel:+18187075382',
+    href: 'tel:+925551234567',
     color: 'from-blue-400 to-blue-600',
   },
   {
     icon: HiMail,
-    title: 'Email',
-    detail: 'operations@tksecurityinc.com',
+    title: 'General Inquiries',
+    detail: 'info@tksecurityinc.com',
     sub: 'We reply within 24 hours',
-    href: 'mailto:operations@tksecurityinc.com',
+    href: 'mailto:info@tksecurityinc.com',
     color: 'from-blue-500 to-indigo-600',
-  },
-  {
-    icon: HiLocationMarker,
-    title: 'Address',
-    detail: '10747 Reseda Blvd',
-    sub: 'Portal Ranch, CA 91326, USA',
-    href: 'https://maps.google.com/?q=10747+Reseda+Blvd+Portal+Ranch+CA+91326',
-    color: 'from-blue-500 to-blue-600',
   },
   {
     icon: HiClock,
@@ -78,8 +78,8 @@ export default function ContactPage() {
               Contact <span className="gradient-text">Us</span>
             </h1>
             <p className="text-slate-400 max-w-2xl mx-auto text-base sm:text-lg">
-              Ready to discuss your security needs? Reach out to us anytime.
-              Our team is available 24/7 for consultations and emergency support.
+              <span className="text-white font-semibold">TK Security Company</span> provides reliable, professional security
+              services with trained personnel and a client-focused approach.
             </p>
           </motion.div>
 

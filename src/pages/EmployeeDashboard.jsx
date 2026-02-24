@@ -13,10 +13,12 @@ import {
 } from 'react-icons/hi'
 import { collection, addDoc, onSnapshot, query, orderBy, doc, deleteDoc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
-import { firestore, storage } from '../firebase'
+import { ref, set, onValue } from 'firebase/database'
+import { firestore, storage, db } from '../firebase'
 import { FiLogOut } from 'react-icons/fi'
 
 const sidebarItems = [
+  { id: 'profile', label: 'Profile Update' },
   { id: 'command', label: 'Command Center' },
   { id: 'attendance', label: 'Attendance History' },
   { id: 'timecard', label: 'Time Card' },
@@ -90,7 +92,7 @@ function formatTime(date) {
 }
 
 /* ───── Command Center View ───── */
-function CommandCenterView({ shiftState, shiftActions }) {
+function CommandCenterView({ shiftState, shiftActions, userName }) {
   const {
     selectedPost, isCheckedIn, checkInTime, checkOutTime,
     dutySeconds, isOnBreak, totalBreakSeconds, breakCount, activityLog
@@ -100,6 +102,8 @@ function CommandCenterView({ shiftState, shiftActions }) {
     setSelectedPost, handleCheckIn, handleCheckOut,
     handleBreakStart, handleBreakEnd
   } = shiftActions
+
+  const onCheckIn = () => handleCheckIn(userName || 'Guard')
 
   const dutyStatus = !isCheckedIn ? 'OFF DUTY' : isOnBreak ? 'ON BREAK' : 'ON DUTY'
   const dutyStatusColor = !isCheckedIn ? 'bg-slate-600' : isOnBreak ? 'bg-gradient-to-r from-blue-500 via-blue-400 to-blue-500' : 'bg-gradient-to-r from-blue-500 via-blue-400 to-blue-700'
@@ -153,7 +157,7 @@ function CommandCenterView({ shiftState, shiftActions }) {
             <motion.button
               whileHover={{ scale: isCheckedIn ? 1 : 1.02 }}
               whileTap={{ scale: isCheckedIn ? 1 : 0.97 }}
-              onClick={handleCheckIn}
+              onClick={onCheckIn}
               disabled={isCheckedIn}
               className={`py-3 rounded-xl font-bold text-sm uppercase tracking-wider transition-colors ${
                 isCheckedIn
@@ -750,48 +754,102 @@ function TimeCardView() {
 
 /* ───── Day Off Request View ───── */
 function DayOffView() {
-  const [reason, setReason] = useState('')
-  const [date, setDate] = useState('')
+  const [personnelId] = useState('Ayan Nath')
+  const [assignedPost, setAssignedPost] = useState('')
+  const [exemptionStart, setExemptionStart] = useState('')
+  const [resumeDuty, setResumeDuty] = useState('')
+  const [justification, setJustification] = useState('')
+  const [digitalSignature, setDigitalSignature] = useState('')
+  const [submitted, setSubmitted] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  const handleSubmit = async () => {
+    if (!exemptionStart) { alert('Please select exemption start date.'); return }
+    if (!resumeDuty) { alert('Please select resume duty date.'); return }
+    if (!justification.trim()) { alert('Please enter justification.'); return }
+    if (!digitalSignature.trim()) { alert('Please enter digital signature.'); return }
+    
+    setLoading(true)
+    try {
+      await addDoc(collection(firestore, 'dayOffRequests'), {
+        personnelId,
+        assignedPost,
+        exemptionStart,
+        resumeDuty,
+        justification,
+        digitalSignature,
+        status: 'pending',
+        createdAt: serverTimestamp()
+      })
+      setSubmitted(true)
+    } catch (err) {
+      console.error('Failed to submit day off request:', err)
+      alert('Failed to submit. Please try again.')
+    }
+    setLoading(false)
+  }
 
   return (
     <div className="space-y-6">
       <div className="bg-slate-800/40 rounded-2xl p-6 border border-white/5">
         <h2 className="text-2xl font-bold text-white">Day off Request</h2>
-        <p className="text-slate-400 text-sm mt-1">Submit a request for time off</p>
+        <p className="text-slate-400 text-sm mt-1">Formal request for post leave or shift modification.</p>
       </div>
 
-      <div className="bg-slate-800/60 rounded-2xl p-6 border border-white/5 max-w-xl">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Requested Date</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm focus:outline-none focus:border-blue-500/50 transition-colors" />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Reason</label>
-            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={4} placeholder="Enter reason for day off..." className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors resize-none" />
-          </div>
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} className="px-8 py-3 rounded-xl bg-blue-500 text-slate-900 font-bold text-sm uppercase tracking-wider hover:bg-blue-400 transition-colors">
-            Submit Request
-          </motion.button>
-        </div>
-      </div>
-
-      <div className="bg-slate-800/60 rounded-2xl p-6 border border-white/5">
-        <h3 className="text-blue-400 text-xs font-bold uppercase tracking-[0.15em] mb-4">Previous Requests</h3>
-        <div className="space-y-3">
-          {[
-            { date: 'Feb 15, 2026', reason: 'Personal', status: 'Approved' },
-            { date: 'Jan 28, 2026', reason: 'Medical', status: 'Approved' },
-            { date: 'Jan 10, 2026', reason: 'Family Emergency', status: 'Approved' },
-          ].map((req, i) => (
-            <div key={i} className="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition-colors">
-              <div>
-                <span className="text-white text-sm font-medium">{req.date}</span>
-                <span className="text-slate-500 text-sm ml-3">{req.reason}</span>
-              </div>
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400">{req.status}</span>
+      <div className="bg-slate-800/60 rounded-2xl p-8 border border-white/5">
+        <div className="space-y-6">
+          {/* Personnel ID & Assigned Post/Zone */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Personnel ID</label>
+              <input type="text" value={personnelId} disabled className="w-full px-4 py-3 rounded-xl bg-slate-700/40 border border-slate-600/40 text-slate-400 text-sm cursor-not-allowed" />
             </div>
-          ))}
+            <div>
+              <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Assigned Post/Zone</label>
+              <input type="text" value={assignedPost} onChange={(e) => setAssignedPost(e.target.value)} placeholder="Site Identifier" className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors" />
+            </div>
+          </div>
+
+          {/* Exemption Start & Resume Duty */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Exemption Start</label>
+              <input type="date" value={exemptionStart} onChange={(e) => setExemptionStart(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm focus:outline-none focus:border-blue-500/50 transition-colors" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Resume Duty</label>
+              <input type="date" value={resumeDuty} onChange={(e) => setResumeDuty(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm focus:outline-none focus:border-blue-500/50 transition-colors" />
+            </div>
+          </div>
+
+          {/* Justification Brief */}
+          <div>
+            <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Justification Brief</label>
+            <textarea value={justification} onChange={(e) => setJustification(e.target.value)} rows={5} placeholder="Enter justification for day off request..." className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors resize-none" />
+          </div>
+
+          {/* Digital Signature */}
+          <div>
+            <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Digital Signature (Legal Name)</label>
+            <input type="text" value={digitalSignature} onChange={(e) => setDigitalSignature(e.target.value)} placeholder="Enter your legal name" className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors" />
+          </div>
+
+          {/* Submit Button */}
+          <motion.button 
+            whileHover={{ scale: submitted ? 1 : 1.02 }} 
+            whileTap={{ scale: submitted ? 1 : 0.97 }} 
+            onClick={handleSubmit}
+            disabled={loading || submitted}
+            className={`w-full py-3 rounded-xl font-bold text-sm uppercase tracking-wider transition-colors ${
+              submitted 
+                ? 'bg-emerald-500 text-white cursor-default' 
+                : loading 
+                  ? 'bg-blue-400 text-slate-900 cursor-wait opacity-80' 
+                  : 'bg-blue-600 text-white hover:bg-blue-500'
+            }`}
+          >
+            {submitted ? 'SUBMITTED' : loading ? 'Submitting...' : 'Request Send'}
+          </motion.button>
         </div>
       </div>
     </div>
@@ -800,12 +858,15 @@ function DayOffView() {
 
 /* ───── Daily Activity Report View ───── */
 function DailyActivityView() {
+  const { user } = useAuth()
+  const { addDailyReport } = useShift()
   const [dateTime, setDateTime] = useState('')
   const [companyArea, setCompanyArea] = useState('')
   const [report, setReport] = useState('')
   const [images, setImages] = useState([{ id: 1, file: null }])
   const [video, setVideo] = useState(null)
   const [submitted, setSubmitted] = useState(false)
+  const [loading, setLoading] = useState(false)
 
   const addImageSlot = () => {
     if (images.length >= 10) return
@@ -816,11 +877,32 @@ function DailyActivityView() {
     setImages(prev => prev.map(img => img.id === id ? { ...img, file } : img))
   }
 
+  const locationNames = {
+    'corporate-a': 'Corporate Tower A',
+    'retail-b': 'Retail Center B',
+    'residential-c': 'Residential Gate C',
+    '1133-hope': '1133 S Hope St',
+    'demo-company': 'demo company'
+  }
+
   const handleSubmit = async () => {
     if (!report.trim()) { alert('Please write your report before submitting.'); return }
-    setSubmitted(true)
-    // Save to database (existing logic, if any)
-    // ...existing code to save to Firebase...
+    setLoading(true)
+
+    // Create report object
+    const newReport = {
+      id: Date.now(),
+      guardName: user?.name || 'Guard',
+      guardEmail: user?.email || '',
+      dateTime: dateTime || new Date().toISOString(),
+      location: locationNames[companyArea] || companyArea || 'demo company',
+      report: report,
+      submittedAt: new Date(),
+      imageCount: images.filter(img => img.file).length,
+    }
+
+    // Save to global context (syncs to Firebase)
+    addDailyReport(newReport)
 
     // Send to email API
     try {
@@ -830,10 +912,20 @@ function DailyActivityView() {
         body: JSON.stringify({ dateTime, companyArea, report })
       })
     } catch (err) {
-      // Optionally show error
       console.error('Failed to send email:', err)
     }
-    setTimeout(() => setSubmitted(false), 3000)
+
+    setSubmitted(true)
+    setLoading(false)
+  }
+
+  const handleReset = () => {
+    setDateTime('')
+    setCompanyArea('')
+    setReport('')
+    setImages([{ id: 1, file: null }])
+    setVideo(null)
+    setSubmitted(false)
   }
 
   return (
@@ -948,17 +1040,17 @@ function DailyActivityView() {
         {/* Submit */}
         <div className="pt-2">
           <motion.button
-            whileHover={{ scale: submitted ? 1 : 1.02 }}
-            whileTap={{ scale: submitted ? 1 : 0.97 }}
-            onClick={handleSubmit}
-            disabled={submitted}
-            className={`px-10 py-4 rounded-xl font-bold text-sm uppercase tracking-[0.15em] transition-colors shadow-lg ${
+            whileHover={{ scale: submitted || loading ? 1 : 1.02 }}
+            whileTap={{ scale: submitted || loading ? 1 : 0.97 }}
+            onClick={submitted ? handleReset : handleSubmit}
+            disabled={loading}
+            className={`px-10 py-4 rounded-xl font-bold text-sm uppercase tracking-[0.15em] transition-colors shadow-lg cursor-pointer ${
               submitted
-                ? 'bg-emerald-600 text-white cursor-default'
-                : 'bg-slate-900 text-white hover:bg-slate-800 cursor-pointer'
+                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                : 'bg-slate-900 text-white hover:bg-slate-800'
             }`}
           >
-            {submitted ? '✓ Submitted' : 'Submit Report'}
+            {loading ? 'Submitting...' : submitted ? 'SUBMITTED' : 'Submit Report'}
           </motion.button>
         </div>
       </div>
@@ -1414,21 +1506,23 @@ function DisciplinaryView() {
 }
 
 /* ───── Reports View ───── */
-function ReportsView() {
+function ReportsView({ onSelectReport }) {
   return (
     <div className="space-y-6">
       <div className="bg-slate-800/40 rounded-2xl p-6 border border-white/5">
         <h2 className="text-2xl font-bold text-white">Reports</h2>
+        <p className="text-slate-400 text-sm mt-1">Submit reports for your assigned location</p>
       </div>
       <div className="flex flex-col items-center gap-4 mt-8">
         <button
-          className="w-full max-w-xs py-2 rounded-lg bg-transparent text-slate-400 font-semibold text-base cursor-not-allowed border-none"
-          disabled
+          onClick={() => onSelectReport('firewatch')}
+          className="w-full max-w-xs py-3 rounded-lg bg-blue-500 text-white font-semibold text-base hover:bg-blue-400 transition-colors cursor-pointer"
         >
           Fire Watch Report
         </button>
         <button
-          className="w-full max-w-xs py-2 rounded-lg bg-transparent text-slate-400 font-semibold text-base border-none hover:bg-white/5 hover:text-white transition-colors"
+          onClick={() => onSelectReport('parkingviolation')}
+          className="w-full max-w-xs py-3 rounded-lg bg-blue-500 text-white font-semibold text-base hover:bg-blue-400 transition-colors cursor-pointer"
         >
           Parking Violation Report
         </button>
@@ -1439,10 +1533,23 @@ function ReportsView() {
 
 /* ───── Information Update View ───── */
 function InfoUpdateView() {
-  const { user } = useAuth();
   const [formData, setFormData] = useState({
-    phone: '', email: '', address: '', emergencyContact: '', emergencyPhone: ''
+    fullName: '',
+    dateOfBirth: '',
+    cellPhone: '',
+    email: '',
+    streetAddress: '',
+    addressLine2: '',
+    city: '',
+    stateRegion: '',
+    postalCode: '',
+    country: '',
+    uniformSize: '',
+    availability: '',
+    digitalSignature: ''
   });
+  const [pictureFile, setPictureFile] = useState(null);
+  const [idFile, setIdFile] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
@@ -1453,61 +1560,241 @@ function InfoUpdateView() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!formData.phone || !formData.email || !formData.address) {
-      setError('Phone, Email, and Address are required.');
+    if (!formData.fullName || !formData.dateOfBirth) {
+      setError('Full Name and Date of Birth are required.');
       return;
     }
     try {
-      await addDoc(collection(firestore, 'employeeInfoUpdates'), {
+      await addDoc(collection(firestore, 'personnelUpdates'), {
         ...formData,
-        createdBy: user?.email || user?.name || null,
-        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
       });
       setSubmitted(true);
-      setFormData({ phone: '', email: '', address: '', emergencyContact: '', emergencyPhone: '' });
-      setTimeout(() => setSubmitted(false), 2000);
     } catch (err) {
-      setError('Failed to save changes.');
+      console.error('Failed to submit personnel update:', err);
+      setError('Failed to submit. Please try again.');
     }
   };
 
   return (
     <div className="space-y-6">
+      {/* Header - Personnel Record */}
       <div className="bg-slate-800/40 rounded-2xl p-6 border border-white/5">
-        <h2 className="text-2xl font-bold text-white">Information Update</h2>
-        <p className="text-slate-400 text-sm mt-1">Update your personal information</p>
+        <h2 className="text-2xl font-bold text-white">Personnel Record</h2>
+        <p className="text-slate-400 text-sm mt-1">Your identification and professional history</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-slate-800/60 rounded-2xl p-6 border border-white/5 max-w-xl">
-        <div className="space-y-4">
-          {[
-            { label: 'Phone Number', field: 'phone', type: 'tel', placeholder: '(555) 123-4567' },
-            { label: 'Email Address', field: 'email', type: 'email', placeholder: 'john@example.com' },
-            { label: 'Home Address', field: 'address', type: 'text', placeholder: '123 Main St, City, State' },
-            { label: 'Emergency Contact', field: 'emergencyContact', type: 'text', placeholder: 'Contact name' },
-            { label: 'Emergency Phone', field: 'emergencyPhone', type: 'tel', placeholder: '(555) 987-6543' },
-          ].map(({ label, field, type, placeholder }) => (
-            <div key={field}>
-              <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">{label}</label>
+      {/* Static Info Display */}
+      <div className="bg-slate-800/60 rounded-2xl p-6 border border-white/5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div>
+            <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Social Security</label>
+            <p className="text-white text-sm">***</p>
+          </div>
+          <div>
+            <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Personnel ID</label>
+            <p className="text-white text-sm">***</p>
+          </div>
+        </div>
+        <div className="border-t border-white/5 pt-4">
+          <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Service History & Bio</label>
+          <p className="text-slate-400 text-sm italic">No service history provided.</p>
+        </div>
+      </div>
+
+      {/* Update Personnel Record Form */}
+      <form onSubmit={handleSubmit} className="bg-slate-800/60 rounded-2xl p-8 border border-white/5">
+        <div className="flex items-center gap-2 mb-6">
+          <span className="w-8 h-1 bg-amber-500 rounded-full"></span>
+          <h3 className="text-white font-bold uppercase tracking-wider text-sm">Update Personnel Record</h3>
+        </div>
+
+        <div className="space-y-6">
+          {/* Full Name & Date of Birth */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Full Name <span className="text-red-500">*</span></label>
               <input
-                type={type}
-                value={formData[field]}
-                onChange={(e) => handleChange(field, e.target.value)}
-                placeholder={placeholder}
+                type="text"
+                value={formData.fullName}
+                onChange={(e) => handleChange('fullName', e.target.value)}
+                placeholder="Type Name"
                 className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
               />
             </div>
-          ))}
+            <div>
+              <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Date of Birth <span className="text-red-500">*</span></label>
+              <input
+                type="date"
+                value={formData.dateOfBirth}
+                onChange={(e) => handleChange('dateOfBirth', e.target.value)}
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm focus:outline-none focus:border-blue-500/50 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Cell Phone & Email */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Cell Phone</label>
+              <input
+                type="tel"
+                value={formData.cellPhone}
+                onChange={(e) => handleChange('cellPhone', e.target.value)}
+                placeholder="(555) 123-4567"
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Email</label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => handleChange('email', e.target.value)}
+                placeholder="email@example.com"
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Address Section */}
+          <div className="bg-slate-700/30 rounded-xl p-4 space-y-4">
+            <div>
+              <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Address</label>
+              <input
+                type="text"
+                value={formData.streetAddress}
+                onChange={(e) => handleChange('streetAddress', e.target.value)}
+                placeholder="Street Address"
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors mb-3"
+              />
+              <input
+                type="text"
+                value={formData.addressLine2}
+                onChange={(e) => handleChange('addressLine2', e.target.value)}
+                placeholder="Address Line 2"
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input
+                type="text"
+                value={formData.city}
+                onChange={(e) => handleChange('city', e.target.value)}
+                placeholder="City"
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+              />
+              <input
+                type="text"
+                value={formData.stateRegion}
+                onChange={(e) => handleChange('stateRegion', e.target.value)}
+                placeholder="State/Region/Province"
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input
+                type="text"
+                value={formData.postalCode}
+                onChange={(e) => handleChange('postalCode', e.target.value)}
+                placeholder="Postal / Zip Code"
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+              />
+              <input
+                type="text"
+                value={formData.country}
+                onChange={(e) => handleChange('country', e.target.value)}
+                placeholder="Country"
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Uniform Size & Availability */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Shirt/Uniform Size</label>
+              <input
+                type="text"
+                value={formData.uniformSize}
+                onChange={(e) => handleChange('uniformSize', e.target.value)}
+                placeholder="Shirt Size and Jacket Size"
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Availability</label>
+              <input
+                type="text"
+                value={formData.availability}
+                onChange={(e) => handleChange('availability', e.target.value)}
+                placeholder="Example: Mon to Sat anytime or Mon-Wed"
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Picture Upload */}
+          <div>
+            <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Picture of Self (Recents) - Please take a pic that can be used with your applications</label>
+            <div className="flex items-center gap-4">
+              <label className="px-4 py-2 rounded-lg bg-slate-700 border border-slate-600 text-white text-sm cursor-pointer hover:bg-slate-600 transition-colors">
+                Choose File
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setPictureFile(e.target.files[0])}
+                  className="hidden"
+                />
+              </label>
+              <span className="text-slate-400 text-sm">{pictureFile ? pictureFile.name : 'No file chosen'}</span>
+            </div>
+          </div>
+
+          {/* ID Upload */}
+          <div>
+            <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Copy of Competent ID - Please take a pic that can be used with your applications</label>
+            <div className="flex items-center gap-4">
+              <label className="px-4 py-2 rounded-lg bg-slate-700 border border-slate-600 text-white text-sm cursor-pointer hover:bg-slate-600 transition-colors">
+                Choose File
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setIdFile(e.target.files[0])}
+                  className="hidden"
+                />
+              </label>
+              <span className="text-slate-400 text-sm">{idFile ? idFile.name : 'No file chosen'}</span>
+            </div>
+          </div>
+
+          {/* Digital Signature */}
+          <div>
+            <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Signature *</label>
+            <input
+              type="text"
+              value={formData.digitalSignature}
+              onChange={(e) => handleChange('digitalSignature', e.target.value)}
+              placeholder="Type your full name"
+              className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+            />
+          </div>
+
           {error && <div className="text-red-500 font-semibold text-sm">{error}</div>}
-          {submitted && <div className="text-green-400 font-semibold text-sm">Changes saved!</div>}
+
+          {/* Submit Button */}
           <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
+            whileHover={{ scale: submitted ? 1 : 1.02 }}
+            whileTap={{ scale: submitted ? 1 : 0.97 }}
             type="submit"
-            className="px-8 py-3 rounded-xl bg-blue-500 text-slate-900 font-bold text-sm uppercase tracking-wider hover:bg-blue-400 transition-colors cursor-pointer"
             disabled={submitted}
+            className={`w-full py-4 rounded-xl font-bold text-sm uppercase tracking-wider transition-colors ${
+              submitted 
+                ? 'bg-emerald-500 text-white cursor-default' 
+                : 'bg-blue-600 text-white hover:bg-blue-500'
+            }`}
           >
-            {submitted ? 'Changed' : 'Save Changes'}
+            {submitted ? 'SUBMITTED' : 'Initiate Modification'}
           </motion.button>
         </div>
       </form>
@@ -1563,6 +1850,182 @@ function NotificationsView() {
 }
 
 /* ═══════════════════════════════════════════ */
+/* ───── Profile Update View (Firebase synced) ───── */
+/* ═══════════════════════════════════════════ */
+function ProfileUpdateView() {
+  const { user, updateUser } = useAuth()
+  const [photoFile, setPhotoFile] = useState(null)
+  const [photoPreview, setPhotoPreview] = useState(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [submitted, setSubmitted] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  // Firebase sync is handled centrally in AuthContext
+
+  const handlePhotoChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setPhotoPreview(reader.result)
+        setPhotoFile(file)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!photoFile && !newPassword) {
+      alert('Please select a photo or enter a new password.')
+      return
+    }
+    setLoading(true)
+    
+    try {
+      const userKey = user?.email?.replace(/[.#$[\]]/g, '_') || 'unknown'
+      
+      // Always compress the image to keep it small
+      let photoToSave = user?.photoURL || null
+      
+      if (photoPreview) {
+        // Compress all photos to small size
+        const img = document.createElement('img')
+        photoToSave = await new Promise((resolve, reject) => {
+          img.onload = () => {
+            const canvas = document.createElement('canvas')
+            const maxSize = 100 // Very small for Firebase
+            let width = img.width
+            let height = img.height
+            
+            if (width > height && width > maxSize) {
+              height = (height * maxSize) / width
+              width = maxSize
+            } else if (height > maxSize) {
+              width = (width * maxSize) / height
+              height = maxSize
+            }
+            
+            canvas.width = width
+            canvas.height = height
+            const ctx = canvas.getContext('2d')
+            ctx.drawImage(img, 0, 0, width, height)
+            const compressed = canvas.toDataURL('image/jpeg', 0.4)
+            console.log('Compressed photo size:', compressed.length, 'bytes')
+            resolve(compressed)
+          }
+          img.onerror = reject
+          img.src = photoPreview
+        })
+      }
+      
+      console.log('Saving to Firebase...', userKey)
+      await set(ref(db, `profiles/${userKey}`), {
+        photoURL: photoToSave,
+        userName: user?.name || 'Employee',
+        email: user?.email || '',
+        hasNewPassword: !!newPassword,
+        updatedAt: new Date().toISOString()
+      })
+      console.log('Firebase save successful!')
+      
+      // Update local user state
+      if (photoToSave) {
+        updateUser({ photoURL: photoToSave })
+        console.log('Local state updated!')
+      }
+
+      setSubmitted(true)
+    } catch (err) {
+      console.error('Failed to update profile:', err)
+      alert('Failed to save: ' + err.message)
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-slate-800/40 rounded-2xl p-6 border border-white/5">
+        <h2 className="text-2xl font-bold text-white">Profile Update</h2>
+        <p className="text-slate-400 text-sm mt-1">Update your password and profile photo.</p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="bg-slate-800/60 rounded-2xl p-8 border border-white/5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Profile Photo */}
+          <div>
+            <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Profile Photo</label>
+            <div className="mb-4">
+              {(photoPreview || user?.photoURL) ? (
+                <img 
+                  src={photoPreview || user?.photoURL} 
+                  alt="Profile" 
+                  className="w-24 h-24 rounded-xl object-cover border-2 border-slate-600"
+                />
+              ) : (
+                <div className="w-24 h-24 rounded-xl bg-slate-700 border-2 border-slate-600 flex items-center justify-center">
+                  <span className="text-slate-400 text-2xl font-bold">
+                    {user?.name?.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || 'EM'}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-4">
+              <label className="px-4 py-2 rounded-lg bg-slate-700 border border-slate-600 text-white text-sm cursor-pointer hover:bg-slate-600 transition-colors">
+                Choose File
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoChange}
+                  className="hidden"
+                />
+              </label>
+              <span className="text-slate-400 text-sm">{photoFile ? photoFile.name : 'No file chosen'}</span>
+            </div>
+            <p className="text-slate-500 text-xs mt-2">If you upload, it will replace current photo.</p>
+          </div>
+
+          {/* New Password */}
+          <div>
+            <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">New Password (Optional)</label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Leave blank to keep current password"
+              className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+            />
+            <p className="text-slate-500 text-xs mt-2">Min 8 characters. Leave blank if you don't want to change.</p>
+          </div>
+        </div>
+
+        <motion.button
+          whileHover={{ scale: submitted || loading ? 1 : 1.02 }}
+          whileTap={{ scale: submitted || loading ? 1 : 0.97 }}
+          type={submitted ? 'button' : 'submit'}
+          onClick={submitted ? () => {
+            setSubmitted(false)
+            setPhotoFile(null)
+            setPhotoPreview(null)
+            setNewPassword('')
+          } : undefined}
+          disabled={loading}
+          className={`mt-8 px-8 py-3 rounded-xl font-bold text-sm uppercase tracking-wider transition-colors cursor-pointer ${
+            submitted
+              ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+              : loading
+                ? 'bg-slate-600 text-slate-400 cursor-wait'
+                : 'bg-slate-700 text-white hover:bg-slate-600'
+          }`}
+        >
+          {loading ? 'Saving...' : submitted ? 'Saved! Click to Update Again' : 'Save Changes'}
+        </motion.button>
+      </form>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════ */
 /* ───── Main Employee Dashboard ───── */
 /* ═══════════════════════════════════════════ */
 export default function EmployeeDashboard() {
@@ -1595,14 +2058,15 @@ export default function EmployeeDashboard() {
 
   const renderView = () => {
     switch (activeView) {
-      case 'command': return <CommandCenterView shiftState={shiftState} shiftActions={shiftActions} />;
+      case 'profile': return <ProfileUpdateView />;
+      case 'command': return <CommandCenterView shiftState={shiftState} shiftActions={shiftActions} userName={user?.name} />;
       case 'attendance': return <AttendanceView records={attendanceRecords} />;
       case 'timecard': return <TimeCardView />;
       case 'dayoff': return <DayOffView />;
       case 'daily': return <DailyActivityView />;
       case 'condition': return <ConditionReportsView />;
       case 'disciplinary': return <DisciplinaryView />;
-      case 'reports': return <ReportsView />;
+      case 'reports': return <ReportsView onSelectReport={handleSidebarSelect} />;
       case 'firewatch':
         return <FireWatchReportView />;
       // Dedicated Fire Watch Report component
@@ -1633,14 +2097,13 @@ export default function EmployeeDashboard() {
               floor: fwForm.floor,
               status: fwForm.status,
               explanation: fwForm.explanation,
-              createdBy: user?.email || user?.name || null,
-              createdAt: serverTimestamp(),
+              submittedBy: user?.name || 'Guard',
+              submittedAt: serverTimestamp()
             });
             setFwSubmitted(true);
-            setFwForm({ floor: '', status: '', explanation: '' });
-            setTimeout(() => setFwSubmitted(false), 2000);
           } catch (err) {
-            setFwError('Failed to submit report.');
+            console.error('Failed to submit fire watch report:', err);
+            setFwError('Failed to submit. Please try again.');
           }
         };
 
@@ -1663,7 +2126,6 @@ export default function EmployeeDashboard() {
                     onChange={handleFwChange}
                     placeholder="e.g., 1st Floor, 2nd Floor"
                     className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-base focus:outline-none focus:border-blue-500/50 transition-colors"
-                    required
                   />
                 </div>
                 <div>
@@ -1673,7 +2135,6 @@ export default function EmployeeDashboard() {
                     value={fwForm.status}
                     onChange={handleFwChange}
                     className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-base focus:outline-none focus:border-blue-500/50 transition-colors"
-                    required
                   >
                     <option value="">-- Select Status --</option>
                     <option value="Clear">Clear</option>
@@ -1693,9 +2154,8 @@ export default function EmployeeDashboard() {
                 />
               </div>
               {fwError && <div className="text-red-500 font-semibold text-sm">{fwError}</div>}
-              {fwSubmitted && <div className="text-green-400 font-semibold text-sm">Report submitted!</div>}
               <div className="flex justify-start mt-6">
-                <button type="submit" disabled={fwSubmitted} className="px-8 py-3 rounded-xl bg-slate-800 text-white font-bold text-base uppercase tracking-wider hover:bg-blue-500 hover:text-slate-900 transition-colors">
+                <button type="submit" disabled={fwSubmitted} className={`px-8 py-3 rounded-xl font-bold text-base uppercase tracking-wider transition-colors ${fwSubmitted ? 'bg-emerald-500 text-white cursor-default' : 'bg-blue-600 text-white hover:bg-blue-500'}`}>
                   {fwSubmitted ? 'Submitted' : 'Submit Fire Watch Report'}
                 </button>
               </div>
@@ -1704,59 +2164,107 @@ export default function EmployeeDashboard() {
         );
       }
       case 'parkingviolation':
-        return (
-          <div className="flex justify-center items-center min-h-[60vh]">
-            <form className="bg-slate-900 rounded-3xl p-8 w-full max-w-3xl border border-white/10 space-y-8 shadow-2xl">
-              <div className="mb-6">
-                <div className="flex items-center gap-4 mb-2">
-                  <h2 className="text-3xl font-bold text-white">Parking Violation Report</h2>
-                </div>
-                <p className="text-slate-300 text-sm">Report any parking violations or issues from your assigned location.</p>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div>
-                  <label className="block text-base text-slate-400 font-bold uppercase tracking-wider mb-1">Location <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    name="location"
-                    placeholder="e.g., Lot A, Main Entrance"
-                    className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-base focus:outline-none focus:border-blue-500/50 transition-colors"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-base text-slate-400 font-bold uppercase tracking-wider mb-1">Status <span className="text-red-500">*</span></label>
-                  <select
-                    name="status"
-                    className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-base focus:outline-none focus:border-blue-500/50 transition-colors"
-                    required
-                  >
-                    <option value="">-- Select Status --</option>
-                    <option value="Violation">Violation</option>
-                    <option value="Warning">Warning</option>
-                    <option value="Resolved">Resolved</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-base text-slate-400 font-bold uppercase tracking-wider mb-1">Explanation / Observations</label>
-                <textarea
-                  name="explanation"
-                  placeholder="Please describe the violation or issue..."
-                  className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-base focus:outline-none focus:border-blue-500/50 transition-colors min-h-[100px]"
-                />
-              </div>
-              <div className="flex justify-start mt-6">
-                <button type="submit" className="px-8 py-3 rounded-xl bg-slate-800 text-white font-bold text-base uppercase tracking-wider hover:bg-blue-500 hover:text-slate-900 transition-colors">Submit Parking Violation Report</button>
-              </div>
-            </form>
-          </div>
-        );
+        return <ParkingViolationReportView />;
       case 'infoupdate': return <InfoUpdateView />;
       case 'notifications': return <NotificationsView />;
       default: return <CommandCenterView />;
     }
   };
+
+  // Dedicated Parking Violation Report component
+  function ParkingViolationReportView() {
+    const { user } = useAuth();
+    const [pvForm, setPvForm] = React.useState({
+      location: '',
+      status: '',
+      explanation: '',
+    });
+    const [pvSubmitted, setPvSubmitted] = React.useState(false);
+    const [pvError, setPvError] = React.useState('');
+
+    const handlePvChange = (e) => {
+      const { name, value } = e.target;
+      setPvForm((prev) => ({ ...prev, [name]: value }));
+    };
+
+    const handlePvSubmit = async (e) => {
+      e.preventDefault();
+      setPvError('');
+      if (!pvForm.location || !pvForm.status) {
+        setPvError('Location and Status are required.');
+        return;
+      }
+      try {
+        await addDoc(collection(firestore, 'parkingViolationReports'), {
+          location: pvForm.location,
+          status: pvForm.status,
+          explanation: pvForm.explanation,
+          submittedBy: user?.name || 'Guard',
+          submittedAt: serverTimestamp()
+        });
+        setPvSubmitted(true);
+      } catch (err) {
+        console.error('Failed to submit parking violation report:', err);
+        setPvError('Failed to submit. Please try again.');
+      }
+    };
+
+    return (
+      <div className="flex justify-center items-center min-h-[60vh]">
+        <form onSubmit={handlePvSubmit} className="bg-slate-900 rounded-3xl p-8 w-full max-w-3xl border border-white/10 space-y-8 shadow-2xl">
+          <div className="mb-6">
+            <div className="flex items-center gap-4 mb-2">
+              <h2 className="text-3xl font-bold text-white">Parking Violation Report</h2>
+            </div>
+            <p className="text-slate-300 text-sm">Report any parking violations or issues from your assigned location.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div>
+              <label className="block text-base text-slate-400 font-bold uppercase tracking-wider mb-1">Location <span className="text-red-500">*</span></label>
+              <input
+                type="text"
+                name="location"
+                value={pvForm.location}
+                onChange={handlePvChange}
+                placeholder="e.g., Lot A, Main Entrance"
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-base focus:outline-none focus:border-blue-500/50 transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-base text-slate-400 font-bold uppercase tracking-wider mb-1">Status <span className="text-red-500">*</span></label>
+              <select
+                name="status"
+                value={pvForm.status}
+                onChange={handlePvChange}
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-base focus:outline-none focus:border-blue-500/50 transition-colors"
+              >
+                <option value="">-- Select Status --</option>
+                <option value="Violation">Violation</option>
+                <option value="Warning">Warning</option>
+                <option value="Resolved">Resolved</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-base text-slate-400 font-bold uppercase tracking-wider mb-1">Explanation / Observations</label>
+            <textarea
+              name="explanation"
+              value={pvForm.explanation}
+              onChange={handlePvChange}
+              placeholder="Please describe the violation or issue..."
+              className="w-full px-4 py-3 rounded-xl bg-slate-700/60 border border-slate-600/40 text-white text-base focus:outline-none focus:border-blue-500/50 transition-colors min-h-[100px]"
+            />
+          </div>
+          {pvError && <div className="text-red-500 font-semibold text-sm">{pvError}</div>}
+          <div className="flex justify-start mt-6">
+            <button type="submit" disabled={pvSubmitted} className={`px-8 py-3 rounded-xl font-bold text-base uppercase tracking-wider transition-colors ${pvSubmitted ? 'bg-emerald-500 text-white cursor-default' : 'bg-blue-600 text-white hover:bg-blue-500'}`}>
+              {pvSubmitted ? 'Submitted' : 'Submit Parking Violation Report'}
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -1772,8 +2280,12 @@ export default function EmployeeDashboard() {
           <div className="bg-slate-800/40 rounded-2xl border border-white/5 p-6 sticky top-24">
             {/* User Profile */}
             <div className="text-center mb-6">
-              <div className="w-20 h-20 rounded-2xl bg-slate-700/60 border-2 border-slate-600/50 flex items-center justify-center mx-auto mb-3">
-                <span className="text-slate-400 text-xl font-bold">{initials}</span>
+              <div className="w-20 h-20 rounded-2xl bg-slate-700/60 border-2 border-slate-600/50 flex items-center justify-center mx-auto mb-3 overflow-hidden">
+                {user?.photoURL ? (
+                  <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-slate-400 text-xl font-bold">{initials}</span>
+                )}
               </div>
               <h3 className="text-white font-bold text-base">{user?.name || 'Employee'}</h3>
               <span className="inline-block mt-2 px-3 py-1 rounded-md bg-blue-500/15 text-blue-400 text-[10px] font-bold uppercase tracking-[0.15em]">

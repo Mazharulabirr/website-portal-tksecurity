@@ -55,7 +55,7 @@ export default function Hero() {
                   <HiArrowRight className="group-hover:translate-x-1 transition-transform text-blue-400" />
                 </motion.span>
               </Link>
-              <Link to="/contact">
+              <Link to="/apply-job">
                 <motion.span
                   className="group flex items-center gap-2 px-6 py-3 rounded-full glass text-slate-300 font-semibold text-sm hover:text-white transition-all"
                   whileHover={{ scale: 1.05 }}

@@ -6,8 +6,12 @@ import { ref, set, onValue, off } from 'firebase/database'
 const ShiftContext = createContext()
 const STORAGE_KEY = 'tk_shift_state'
 const ATTENDANCE_KEY = 'tk_attendance_records'
+const ACTIVE_GUARDS_KEY = 'tk_active_guards'
+const DAILY_REPORTS_KEY = 'tk_daily_reports'
 const FIREBASE_SHIFT_PATH = 'shiftState'
 const FIREBASE_ATTENDANCE_PATH = 'attendanceRecords'
+const FIREBASE_ACTIVE_GUARDS_PATH = 'activeGuards'
+const FIREBASE_DAILY_REPORTS_PATH = 'dailyActivityReports'
 
 /* Helper: format Date → hh:mm:ss AM/PM */
 function formatTime(date) {
@@ -61,6 +65,28 @@ function loadAttendance() {
   } catch { return null }
 }
 
+function loadActiveGuards() {
+  try {
+    const raw = localStorage.getItem(ACTIVE_GUARDS_KEY)
+    if (!raw) return []
+    return JSON.parse(raw).map(g => ({
+      ...g,
+      checkInTime: g.checkInTime ? new Date(g.checkInTime) : null,
+    }))
+  } catch { return [] }
+}
+
+function loadDailyReports() {
+  try {
+    const raw = localStorage.getItem(DAILY_REPORTS_KEY)
+    if (!raw) return []
+    return JSON.parse(raw).map(r => ({
+      ...r,
+      submittedAt: r.submittedAt ? new Date(r.submittedAt) : null,
+    }))
+  } catch { return [] }
+}
+
 const defaultAttendance = [
   { id: 1, date: new Date(2026, 1, 10, 9, 19), company: '1133 S Hope St', area: '—', checkIn: new Date(2026, 1, 10, 9, 19), checkOut: null, breakSeconds: 300, dutySeconds: 747660, active: true },
   { id: 2, date: new Date(2026, 1, 2, 16, 17), company: '1133 S Hope St', area: '—', checkIn: new Date(2026, 1, 2, 16, 17), checkOut: new Date(2026, 1, 10, 9, 19), breakSeconds: 0, dutySeconds: 666060, active: false },
@@ -71,6 +97,8 @@ export function ShiftProvider({ children }) {
   const saved = loadShiftState()
 
   const [attendanceRecords, setAttendanceRecords] = useState(() => loadAttendance() || defaultAttendance)
+  const [activeGuards, setActiveGuards] = useState(() => loadActiveGuards())
+  const [dailyReports, setDailyReports] = useState(() => loadDailyReports())
 
   const [selectedPost, setSelectedPost] = useState(saved?.selectedPost || '')
   const [isCheckedIn, setIsCheckedIn] = useState(saved?.isCheckedIn || false)
@@ -129,6 +157,38 @@ export function ShiftProvider({ children }) {
     set(ref(db, FIREBASE_ATTENDANCE_PATH), serializeRecords(attendanceRecords))
   }, [attendanceRecords])
 
+  // Persist active guards list to localStorage & Firebase
+  useEffect(() => {
+    const serialized = activeGuards.map(g => ({
+      ...g,
+      checkInTime: g.checkInTime?.toISOString() || null,
+    }))
+    localStorage.setItem(ACTIVE_GUARDS_KEY, JSON.stringify(serialized))
+    set(ref(db, FIREBASE_ACTIVE_GUARDS_PATH), serialized)
+  }, [activeGuards])
+
+  const addActiveGuard = useCallback((guard) => {
+    setActiveGuards(prev => [guard, ...prev.filter(g => g.id !== guard.id)])
+  }, [])
+
+  const removeActiveGuard = useCallback((guardId) => {
+    setActiveGuards(prev => prev.filter(g => g.id !== guardId))
+  }, [])
+
+  const addDailyReport = useCallback((report) => {
+    setDailyReports(prev => [report, ...prev])
+  }, [])
+
+  // Persist daily reports to localStorage & Firebase
+  useEffect(() => {
+    const serialized = dailyReports.map(r => ({
+      ...r,
+      submittedAt: r.submittedAt?.toISOString() || null,
+    }))
+    localStorage.setItem(DAILY_REPORTS_KEY, JSON.stringify(serialized))
+    set(ref(db, FIREBASE_DAILY_REPORTS_PATH), serialized)
+  }, [dailyReports])
+
   const addAttendanceRecord = useCallback((record) => {
     setAttendanceRecords(prev => [record, ...prev])
   }, [])
@@ -166,6 +226,17 @@ export function ShiftProvider({ children }) {
         startBreakTimer()
       } else {
         startDutyTimer()
+      }
+      // Recovery: if checked in but no active guards, reconstruct from state
+      const currentActiveGuards = loadActiveGuards()
+      if (currentActiveGuards.length === 0 && saved.activeRecordId) {
+        const postNames = { post1: 'Corporate Tower A', post2: 'Retail Center B', post3: 'Residential Gate C' }
+        setActiveGuards([{
+          id: saved.activeRecordId,
+          name: 'Guard',
+          post: postNames[saved.selectedPost] || saved.selectedPost || 'Post',
+          checkInTime: saved.checkInTime,
+        }])
       }
     }
     return () => { stopDutyTimer(); stopBreakTimer() }
@@ -218,12 +289,31 @@ export function ShiftProvider({ children }) {
       if (e.key === ATTENDANCE_KEY && e.newValue) {
         try { setAttendanceRecords(deserializeRecords(JSON.parse(e.newValue))) } catch { /* */ }
       }
+      if (e.key === ACTIVE_GUARDS_KEY && e.newValue) {
+        try {
+          const guards = JSON.parse(e.newValue).map(g => ({
+            ...g,
+            checkInTime: g.checkInTime ? new Date(g.checkInTime) : null,
+          }))
+          setActiveGuards(guards)
+        } catch { /* */ }
+      }
+      if (e.key === DAILY_REPORTS_KEY && e.newValue) {
+        try {
+          const reports = JSON.parse(e.newValue).map(r => ({
+            ...r,
+            submittedAt: r.submittedAt ? new Date(r.submittedAt) : null,
+          }))
+          setDailyReports(reports)
+        } catch { /* */ }
+      }
     }
     window.addEventListener('storage', handleStorage)
 
     // Listen for Firebase shift state changes
     const shiftRef = ref(db, FIREBASE_SHIFT_PATH)
     const attendanceRef = ref(db, FIREBASE_ATTENDANCE_PATH)
+    const activeGuardsRef = ref(db, FIREBASE_ACTIVE_GUARDS_PATH)
     const shiftListener = onValue(shiftRef, (snapshot) => {
       const data = snapshot.val()
       if (data) {
@@ -265,15 +355,48 @@ export function ShiftProvider({ children }) {
       const data = snapshot.val()
       if (data) setAttendanceRecords(deserializeRecords(data))
     })
+    // Listen for Firebase active guards changes
+    const activeGuardsListener = onValue(activeGuardsRef, (snapshot) => {
+      const data = snapshot.val()
+      if (data) {
+        // Handle both array and object (Firebase may convert arrays to objects)
+        const dataArray = Array.isArray(data) ? data : Object.values(data)
+        const guards = dataArray.map(g => ({
+          ...g,
+          checkInTime: g.checkInTime ? new Date(g.checkInTime) : null,
+        }))
+        setActiveGuards(guards)
+      } else {
+        setActiveGuards([])
+      }
+    })
+    // Listen for Firebase daily reports changes
+    const dailyReportsRef = ref(db, FIREBASE_DAILY_REPORTS_PATH)
+    const dailyReportsListener = onValue(dailyReportsRef, (snapshot) => {
+      const data = snapshot.val()
+      if (data) {
+        // Handle both array and object (Firebase may convert arrays to objects)
+        const dataArray = Array.isArray(data) ? data : Object.values(data)
+        const reports = dataArray.map(r => ({
+          ...r,
+          submittedAt: r.submittedAt ? new Date(r.submittedAt) : null,
+        }))
+        setDailyReports(reports)
+      } else {
+        setDailyReports([])
+      }
+    })
     return () => {
       window.removeEventListener('storage', handleStorage)
       off(shiftRef, 'value', shiftListener)
       off(attendanceRef, 'value', attendanceListener)
+      off(activeGuardsRef, 'value', activeGuardsListener)
+      off(dailyReportsRef, 'value', dailyReportsListener)
     }
   }, [startDutyTimer, stopDutyTimer, startBreakTimer, stopBreakTimer])
 
   // ── CHECK IN ──
-  const handleCheckIn = useCallback(() => {
+  const handleCheckIn = useCallback((guardName = 'Guard') => {
     if (!selectedPost) { alert('Please select an assigned post before checking in.'); return }
     if (isCheckedIn) return
     const now = new Date()
@@ -295,6 +418,14 @@ export function ShiftProvider({ children }) {
       area: '—', checkIn: now, checkOut: null, breakSeconds: 0, dutySeconds: 0, active: true,
     })
 
+    // Add to active guards list
+    addActiveGuard({
+      id: newId,
+      name: guardName,
+      post: postNames[selectedPost] || selectedPost,
+      checkInTime: now,
+    })
+
     // Persist
     persistShift({
       isCheckedIn: true, checkInTime: now.toISOString(),
@@ -303,7 +434,7 @@ export function ShiftProvider({ children }) {
       savedDutySeconds: 0, savedBreakSeconds: 0, lastPausedAt: now.toISOString(),
       activityLog: [{ action: 'Checked In', time: formatTime(now), timestamp: now.toISOString() }],
     })
-  }, [selectedPost, isCheckedIn, startDutyTimer, addLog, addAttendanceRecord])
+  }, [selectedPost, isCheckedIn, startDutyTimer, addLog, addAttendanceRecord, addActiveGuard])
 
   // ── CHECK OUT ──
   const handleCheckOut = useCallback(() => {
@@ -325,6 +456,8 @@ export function ShiftProvider({ children }) {
       updateAttendanceRecord(activeRecordId.current, {
         checkOut: now, breakSeconds: totalBreakSeconds, dutySeconds: dutySeconds, active: false,
       })
+      // Remove from active guards list
+      removeActiveGuard(activeRecordId.current)
       activeRecordId.current = null
     }
 
@@ -336,7 +469,7 @@ export function ShiftProvider({ children }) {
       savedDutySeconds: dutySeconds, savedBreakSeconds: totalBreakSeconds, lastPausedAt: null,
       activityLog: newLog.map(l => ({ ...l, timestamp: l.timestamp?.toISOString?.() || l.timestamp || null })),
     })
-  }, [isCheckedIn, isOnBreak, totalBreakSeconds, dutySeconds, checkInTime, breakCount, selectedPost, activityLog, stopDutyTimer, stopBreakTimer, addLog, updateAttendanceRecord])
+  }, [isCheckedIn, isOnBreak, totalBreakSeconds, dutySeconds, checkInTime, breakCount, selectedPost, activityLog, stopDutyTimer, stopBreakTimer, addLog, updateAttendanceRecord, removeActiveGuard])
 
   // ── BREAK START ──
   const handleBreakStart = useCallback(() => {
@@ -388,7 +521,9 @@ export function ShiftProvider({ children }) {
   return (
     <ShiftContext.Provider value={{
       shiftState, shiftActions,
-      attendanceRecords, addAttendanceRecord, updateAttendanceRecord
+      attendanceRecords, addAttendanceRecord, updateAttendanceRecord,
+      activeGuards,
+      dailyReports, addDailyReport
     }}>
       {children}
     </ShiftContext.Provider>

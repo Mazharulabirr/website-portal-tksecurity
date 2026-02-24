@@ -7,6 +7,7 @@ import AboutPage from './pages/AboutPage'
 import FounderPage from './pages/FounderPage'
 import ServicesPage from './pages/ServicesPage'
 import ContactPage from './pages/ContactPage'
+import JobApplicationPage from './pages/JobApplicationPage'
 import LoginPage from './pages/LoginPage'
 import EmployeeDashboard from './pages/EmployeeDashboard'
 import ClientDashboard from './pages/ClientDashboard'
@@ -16,6 +17,8 @@ import ThemeToggle from './components/ThemeToggle'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { ShiftProvider } from './context/ShiftContext'
+
+// ...existing code...
 
 // Protected Route component
 function ProtectedRoute({ children, allowedRole }) {
@@ -42,6 +45,7 @@ function AppRoutes() {
             <Route path="/founder" element={<FounderPage />} />
             <Route path="/services" element={<ServicesPage />} />
             <Route path="/contact" element={<ContactPage />} />
+            <Route path="/apply-job" element={<JobApplicationPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/dashboard/employee" element={<ProtectedRoute allowedRole="employee"><EmployeeDashboard /></ProtectedRoute>} />
             <Route path="/dashboard/client" element={<ProtectedRoute allowedRole="client"><ClientDashboard /></ProtectedRoute>} />

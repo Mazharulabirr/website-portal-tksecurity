@@ -95,13 +95,18 @@ export default function Footer() {
         </div>
 
         {/* Bottom */}
-        <div className="border-t border-slate-800 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-sm text-slate-500">
-            © {new Date().getFullYear()} TK Security Inc. All Rights Reserved.
-          </p>
-          <p className="text-sm text-slate-500">
-            Professional Safety & Security Protection Services
-          </p>
+        <div className="border-t border-slate-800 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 w-full">
+          <div className="flex flex-col sm:flex-row items-center justify-between w-full">
+            <p className="text-sm text-slate-500">
+              © 2026 TK Security Inc. All Rights Reserved.
+            </p>
+            <p className="text-sm text-slate-500 sm:ml-8">
+              Professional Safety & Security Protection Services
+            </p>
+            <p className="text-xs text-slate-400 sm:ml-8 mt-2 sm:mt-0">
+              Developed by Mazharul Abir
+            </p>
+          </div>
         </div>
       </div>
     </footer>

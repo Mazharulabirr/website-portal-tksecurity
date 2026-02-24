@@ -7,6 +7,7 @@ import { getStorage } from 'firebase/storage';
 const firebaseConfig = {
   apiKey: "AIzaSyC-4-F6ogbiclbeZ93L3Ha_RkeHIv-AYHg",
   authDomain: "tksecurity-7cb4b.firebaseapp.com",
+  databaseURL: "https://tksecurity-7cb4b-default-rtdb.firebaseio.com",
   projectId: "tksecurity-7cb4b",
   storageBucket: "tksecurity-7cb4b.firebasestorage.app",
   messagingSenderId: "87336783354",

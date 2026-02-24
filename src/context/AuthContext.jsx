@@ -1,4 +1,6 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useState, useEffect } from 'react'
+import { ref, onValue } from 'firebase/database'
+import { db } from '../firebase'
 
 const AuthContext = createContext(null)
 
@@ -14,6 +16,28 @@ export function AuthProvider({ children }) {
     const saved = localStorage.getItem('tk_user')
     return saved ? JSON.parse(saved) : null
   })
+
+  // Firebase sync - load profile photo on login and sync in real-time
+  useEffect(() => {
+    if (!user?.email) return
+    
+    const userKey = user.email.replace(/[.#$[\]]/g, '_')
+    const profileRef = ref(db, `profiles/${userKey}`)
+    
+    const unsubscribe = onValue(profileRef, (snapshot) => {
+      const data = snapshot.val()
+      if (data?.photoURL && data.photoURL !== user.photoURL) {
+        console.log('Firebase sync: Loading profile photo')
+        setUser(prev => {
+          const updated = { ...prev, photoURL: data.photoURL }
+          localStorage.setItem('tk_user', JSON.stringify(updated))
+          return updated
+        })
+      }
+    })
+    
+    return () => unsubscribe()
+  }, [user?.email])
 
 
   // Accepts either email or username
@@ -40,8 +64,16 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('tk_user')
   }
 
+  const updateUser = (updates) => {
+    setUser(prev => {
+      const updated = { ...prev, ...updates }
+      localStorage.setItem('tk_user', JSON.stringify(updated))
+      return updated
+    })
+  }
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, login, logout, updateUser, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   )
